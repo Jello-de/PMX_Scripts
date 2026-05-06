@@ -1,18 +1,8 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2026
-# Author: custom
-# License: MIT
-# Source: https://silverbullet.md
-# GitHub: https://github.com/silverbulletmd/silverbullet
-#
 # Community-Scripts-style LXC entrypoint for SilverBullet Secure
 
 set -Eeo pipefail
-
-export SSH_CLIENT="${SSH_CLIENT:-}"
-export SSH_CONNECTION="${SSH_CONNECTION:-}"
-export SSH_TTY="${SSH_TTY:-}"
 
 API_FUNC_URL="https://raw.githubusercontent.com/Jello-de/PMX_Scripts/main/misc/api.func"
 BUILD_FUNC_URL="https://raw.githubusercontent.com/Jello-de/PMX_Scripts/main/misc/build.func"
@@ -20,7 +10,6 @@ BUILD_FUNC_URL="https://raw.githubusercontent.com/Jello-de/PMX_Scripts/main/misc
 source <(curl -fsSL "$API_FUNC_URL")
 source <(curl -fsSL "$BUILD_FUNC_URL")
 
-# Fallback: progress/telemetry must never be fatal for the installer.
 if ! declare -F post_progress_to_api >/dev/null 2>&1; then
   post_progress_to_api() {
     return 0
