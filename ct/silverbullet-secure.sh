@@ -8,7 +8,20 @@
 #
 # Community-Scripts-style LXC entrypoint for SilverBullet Secure
 
-source <(curl -fsSL https://raw.githubusercontent.com/Jello-de/PMX_Scripts/main/misc/build.func)
+set -Eeuo pipefail
+
+API_FUNC_URL="https://raw.githubusercontent.com/Jello-de/PMX_Scripts/main/misc/api.func"
+BUILD_FUNC_URL="https://raw.githubusercontent.com/Jello-de/PMX_Scripts/main/misc/build.func"
+
+source <(curl -fsSL "$API_FUNC_URL")
+source <(curl -fsSL "$BUILD_FUNC_URL")
+
+# Fallback: progress/telemetry must never be fatal for the installer.
+if ! declare -F post_progress_to_api >/dev/null 2>&1; then
+  post_progress_to_api() {
+    return 0
+  }
+fi
 
 APP="Silverbullet-Secure"
 var_tags="${var_tags:-notes;markdown;pkm}"
@@ -23,6 +36,30 @@ header_info "${APP}"
 variables
 color
 catch_errors
+
+function default_settings() {
+  CT_TYPE="1"
+  PW=""
+  CT_ID=$NEXTID
+  HN="silverbullet-secure"
+  DISK_SIZE="${var_disk}"
+  CORE_COUNT="${var_cpu}"
+  RAM_SIZE="${var_ram}"
+  BRG="vmbr0"
+  NET="dhcp"
+  GATE=""
+  APT_CACHER=""
+  APT_CACHER_IP=""
+  DISABLEIP6="no"
+  MTU=""
+  SD=""
+  NS=""
+  MAC=""
+  VLAN=""
+  SSH="no"
+  VERB="no"
+  echo_default
+}
 
 function update_script() {
   header_info
@@ -47,6 +84,7 @@ function update_script() {
       "latest" \
       "/opt/silverbullet/bin" \
       "silverbullet-server-linux-x86_64.zip"
+
     chmod 0755 /opt/silverbullet/bin/silverbullet
     chown root:root /opt/silverbullet/bin/silverbullet
     msg_ok "Updated SilverBullet"
