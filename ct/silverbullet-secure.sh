@@ -10,6 +10,10 @@
 
 set -Eeo pipefail
 
+export SSH_CLIENT="${SSH_CLIENT:-}"
+export SSH_CONNECTION="${SSH_CONNECTION:-}"
+export SSH_TTY="${SSH_TTY:-}"
+
 API_FUNC_URL="https://raw.githubusercontent.com/Jello-de/PMX_Scripts/main/misc/api.func"
 BUILD_FUNC_URL="https://raw.githubusercontent.com/Jello-de/PMX_Scripts/main/misc/build.func"
 
