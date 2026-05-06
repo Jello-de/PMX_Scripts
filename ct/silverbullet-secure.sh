@@ -8,7 +8,7 @@
 #
 # Community-Scripts-style LXC entrypoint for SilverBullet Secure
 
-set -Eeuo pipefail
+set -Eeo pipefail
 
 API_FUNC_URL="https://raw.githubusercontent.com/Jello-de/PMX_Scripts/main/misc/api.func"
 BUILD_FUNC_URL="https://raw.githubusercontent.com/Jello-de/PMX_Scripts/main/misc/build.func"
