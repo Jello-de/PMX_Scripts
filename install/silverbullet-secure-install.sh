@@ -1,84 +1,152 @@
 #!/usr/bin/env bash
 
-# Copyright (c) 2026
-# Author: custom
-# License: MIT
-# Source: https://silverbullet.md
-# GitHub: https://github.com/silverbulletmd/silverbullet
-#
-# Community-Scripts-style install script for SilverBullet Secure
+# SilverBullet Secure install script
+# Runs inside Debian LXC
 
-source /dev/stdin <<<"$FUNCTIONS_FILE_PATH"
+set -Eeuo pipefail
 
-color
-verb_ip6
-catch_errors
-setting_up_container
-network_check
-update_os
+APP="SilverBullet"
 
-msg_info "Installing dependencies"
-$STD apt-get install -y \
-  ca-certificates \
-  curl \
-  unzip \
-  jq \
-  openssl
-msg_ok "Installed dependencies"
+msg_info() {
+  echo "[INFO] $*"
+}
 
-msg_info "Creating SilverBullet user and directories"
-$STD addgroup --system silverbullet
-$STD adduser \
-  --system \
-  --home /var/lib/silverbullet \
-  --shell /usr/sbin/nologin \
-  --no-create-home \
-  --gecos "SilverBullet" \
-  --ingroup silverbullet \
-  --disabled-login \
-  --disabled-password \
-  silverbullet
+msg_ok() {
+  echo "[OK] $*"
+}
 
-mkdir -p \
-  /opt/silverbullet/bin \
-  /var/lib/silverbullet/space \
-  /etc/silverbullet
+msg_warn() {
+  echo "[WARN] $*"
+}
 
-chown -R silverbullet:silverbullet /var/lib/silverbullet
-chmod 0750 /var/lib/silverbullet
-chmod 0750 /var/lib/silverbullet/space
-msg_ok "Created SilverBullet user and directories"
+msg_error() {
+  echo "[ERROR] $*" >&2
+}
 
-msg_info "Installing SilverBullet"
-fetch_and_deploy_gh_release \
-  "silverbullet" \
-  "silverbulletmd/silverbullet" \
-  "prebuild" \
-  "latest" \
-  "/opt/silverbullet/bin" \
-  "silverbullet-server-linux-x86_64.zip"
+require_root() {
+  if [[ "${EUID}" -ne 0 ]]; then
+    msg_error "Dieses Installationsscript muss als root im Container ausgeführt werden."
+    exit 1
+  fi
+}
 
-chmod 0755 /opt/silverbullet/bin/silverbullet
-chown root:root /opt/silverbullet/bin/silverbullet
-msg_ok "Installed SilverBullet"
+install_dependencies() {
+  msg_info "Installiere Abhängigkeiten..."
 
-msg_info "Creating secure default configuration"
-SB_PASSWORD="$(openssl rand -base64 36 | tr -d '\n')"
+  export DEBIAN_FRONTEND=noninteractive
 
-cat >/etc/silverbullet/silverbullet.env <<EOF
-SB_USER=admin:${SB_PASSWORD}
+  apt-get update
+  apt-get install -y \
+    ca-certificates \
+    curl \
+    unzip \
+    jq \
+    openssl
+
+  msg_ok "Abhängigkeiten installiert."
+}
+
+create_user_and_dirs() {
+  msg_info "Erstelle Benutzer und Verzeichnisse..."
+
+  if ! getent group silverbullet >/dev/null 2>&1; then
+    addgroup --system silverbullet
+  fi
+
+  if ! id silverbullet >/dev/null 2>&1; then
+    adduser \
+      --system \
+      --home /var/lib/silverbullet \
+      --shell /usr/sbin/nologin \
+      --no-create-home \
+      --gecos "SilverBullet" \
+      --ingroup silverbullet \
+      --disabled-login \
+      --disabled-password \
+      silverbullet
+  fi
+
+  mkdir -p /opt/silverbullet/bin
+  mkdir -p /var/lib/silverbullet/space
+  mkdir -p /etc/silverbullet
+
+  chown -R silverbullet:silverbullet /var/lib/silverbullet
+  chmod 0750 /var/lib/silverbullet
+  chmod 0750 /var/lib/silverbullet/space
+
+  msg_ok "Benutzer und Verzeichnisse erstellt."
+}
+
+install_silverbullet() {
+  msg_info "Installiere SilverBullet..."
+
+  local tmpdir
+  tmpdir="$(mktemp -d)"
+
+  curl -fsSL \
+    https://github.com/silverbulletmd/silverbullet/releases/latest/download/silverbullet-server-linux-x86_64.zip \
+    -o "${tmpdir}/silverbullet.zip"
+
+  unzip -o "${tmpdir}/silverbullet.zip" -d /opt/silverbullet/bin
+
+  chmod 0755 /opt/silverbullet/bin/silverbullet
+  chown root:root /opt/silverbullet/bin/silverbullet
+
+  rm -rf "${tmpdir}"
+
+  msg_ok "SilverBullet installiert."
+}
+
+create_config() {
+  msg_info "Erstelle sichere Standardkonfiguration..."
+
+  local sb_password
+  sb_password="$(openssl rand -base64 36 | tr -d '\n')"
+
+  cat >/etc/silverbullet/silverbullet.env <<EOF
+SB_USER=admin:${sb_password}
 SB_NAME=Private Notes
 SB_LOCKOUT_LIMIT=5
 SB_LOCKOUT_TIME=300
 SB_REMEMBER_ME_HOURS=12
 EOF
 
-chown root:silverbullet /etc/silverbullet/silverbullet.env
-chmod 0640 /etc/silverbullet/silverbullet.env
-msg_ok "Created secure default configuration"
+  chown root:silverbullet /etc/silverbullet/silverbullet.env
+  chmod 0640 /etc/silverbullet/silverbullet.env
 
-msg_info "Creating systemd service"
-cat >/etc/systemd/system/silverbullet.service <<'EOF'
+  cat >/root/SILVERBULLET-CREDENTIALS.txt <<EOF
+SilverBullet wurde installiert.
+
+URL:
+  http://$(hostname -I | awk '{print $1}'):3000
+
+Username:
+  admin
+
+Password:
+  ${sb_password}
+
+Credential file:
+  /etc/silverbullet/silverbullet.env
+
+Data directory:
+  /var/lib/silverbullet/space
+
+Service commands:
+  systemctl status silverbullet --no-pager
+  systemctl restart silverbullet
+  journalctl -u silverbullet -f
+EOF
+
+  chmod 0600 /root/SILVERBULLET-CREDENTIALS.txt
+
+  msg_ok "Konfiguration erstellt."
+}
+
+create_systemd_service() {
+  msg_info "Erstelle systemd-Service..."
+
+  cat >/etc/systemd/system/silverbullet.service <<'EOF'
 [Unit]
 Description=SilverBullet
 Documentation=https://silverbullet.md/
@@ -115,45 +183,48 @@ ProtectKernelModules=true
 ProtectKernelTunables=true
 ProtectClock=true
 ProtectHostname=true
-
 SystemCallArchitectures=native
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
-systemctl daemon-reload
-systemctl enable -q --now silverbullet
-msg_ok "Created systemd service"
+  systemctl daemon-reload
+  systemctl enable --now silverbullet
 
-msg_info "Writing credential note"
-cat >/root/SILVERBULLET-CREDENTIALS.txt <<EOF
-SilverBullet has been installed.
+  msg_ok "systemd-Service erstellt und gestartet."
+}
 
-URL:
-  http://${LOCAL_IP}:3000
+verify_installation() {
+  msg_info "Prüfe Installation..."
 
-Username:
-  admin
+  if ! systemctl is-active --quiet silverbullet; then
+    msg_error "SilverBullet-Service läuft nicht."
+    journalctl -u silverbullet -n 80 --no-pager || true
+    exit 1
+  fi
 
-Password:
-  ${SB_PASSWORD}
+  if ! ss -tulpn | grep -q ':3000'; then
+    msg_error "SilverBullet lauscht nicht auf Port 3000."
+    exit 1
+  fi
 
-Credential file:
-  /etc/silverbullet/silverbullet.env
+  msg_ok "SilverBullet läuft auf Port 3000."
+}
 
-Data directory:
-  /var/lib/silverbullet/space
+main() {
+  require_root
+  install_dependencies
+  create_user_and_dirs
+  install_silverbullet
+  create_config
+  create_systemd_service
+  verify_installation
 
-Service commands:
-  systemctl status silverbullet
-  systemctl restart silverbullet
-  journalctl -u silverbullet -f
-EOF
+  echo
+  msg_ok "Installation abgeschlossen."
+  echo
+  cat /root/SILVERBULLET-CREDENTIALS.txt
+}
 
-chmod 0600 /root/SILVERBULLET-CREDENTIALS.txt
-msg_ok "Wrote credential note"
-
-motd_ssh
-customize
-cleanup_lxc
+main "$@"
